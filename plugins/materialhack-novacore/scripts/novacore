@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/$(basename "${BASH_SOURCE[0]}")"
+
+declare -a CANDIDATE_ROOTS=()
+if [[ -n "${NOVACORE_REPO_ROOT:-}" ]]; then
+  CANDIDATE_ROOTS+=("${NOVACORE_REPO_ROOT}")
+fi
+CANDIDATE_ROOTS+=("${PWD}")
+CANDIDATE_ROOTS+=("${PLUGIN_ROOT}/../..")
+
+for candidate in "${CANDIDATE_ROOTS[@]}"; do
+  if [[ -d "${candidate}" ]]; then
+    repo_root="$(cd "${candidate}" && pwd -P)"
+    target="${repo_root}/scripts/novacore"
+    if [[ -x "${target}" && "${target}" != "${SCRIPT_PATH}" ]]; then
+      exec "${target}" "$@"
+    fi
+  fi
+done
+
+cat >&2 <<'EOF'
+Could not locate MaterialHack-TheSeven/scripts/novacore.
+Run this plugin from the repository root or set NOVACORE_REPO_ROOT to the repo path.
+EOF
+exit 1

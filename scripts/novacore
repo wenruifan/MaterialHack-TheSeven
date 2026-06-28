@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PYTHONPATH="${ROOT}/memory/src:${ROOT}/loop_runner/src:${ROOT}/app/src:${PYTHONPATH:-}"
+
+if [[ -n "${PYTHON:-}" ]]; then
+  PYTHON_CMD="${PYTHON}"
+elif [[ -x "${ROOT}/.venv/bin/python" ]]; then
+  PYTHON_CMD="${ROOT}/.venv/bin/python"
+else
+  PYTHON_CMD="python3"
+fi
+
+exec "${PYTHON_CMD}" -m materialhack_agent.harness "$@"

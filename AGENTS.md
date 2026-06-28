@@ -9,8 +9,13 @@ without accidentally overwriting another collaborator's direction.
 | Branch | Owner | Scope | Status |
 | --- | --- | --- | --- |
 | `main` | Team | Stable shared base | Keep minimal until branches are reviewed and merged. |
-| `memory` | M-priv (Michael) | Durable memory abstraction for protein-design runs, loop records, rollback, branching, future TuringDB integration, and durable seed-selection evidence. | Active. Issue #1 boundary agreed; implementation pending. |
+| `memory` | M-priv (Michael) | Durable memory abstraction for protein-design runs, loop records, rollback, branching, future TuringDB integration, and durable seed-selection evidence. | Active. Memory implementation is merged to `origin/main`; branch remains the ownership line for follow-up memory changes. |
 | `WF` | WenruiFan | LangGraph agentic protein-design pipeline, temporary pre-loop candidate flow, stubbed generation/screening/verifier nodes. | Owns temporary pre-loop seed sourcing, scoring, and ranking before handoff to memory. |
+| `TRS` | Team | Topological Reorganization Score implementation for protein-metal binding structure scoring and explanation. | Remote branch. Candidate screening tool that should consume generated or retrieved structure artifacts. |
+| `loop-runner` | M-priv (Michael) | Runner orchestration above memory after `loop_0`, including planner, generator, Boltz, screening, verifier, and reflection adapter boundaries. | Local branch/worktree scope observed; not present on `origin` yet. |
+| `codex/define-boltz-model-usage` | M-priv (Michael) | Documents how the agentic system should use Boltz-family generation, structure, and evaluation models across WF, memory, TRS, and runner branches. | Active documentation branch. See `BOLTZ_MODELS.md`. |
+| `codex/package-agent-app` | M-priv (Michael) | App composition layer that packages WF-style seed handoff, durable memory, loop runner, and future TRS/verifier adapter slots into a runnable agentic system. | Active integration branch. Additive only while owned branches remain separate. |
+| `codex/agent-plugin-workflow` | M-priv (Michael) | Codex plugin and harness control plane for operating the WF-style framework from `main`, with memory workbench UI, TRS loop evidence, Boltz setup/preflight, and verifier adapter evidence. | Active integration branch. Additive; supersedes app-first operation with plugin/harness operation. |
 
 Update this table when a collaborator takes ownership of a new branch or when a
 branch changes scope.
@@ -53,3 +58,9 @@ Accepted boundary:
   design decision.
 - If a branch starts depending on another branch's API, document the expected
   interface in this file or the relevant README before wiring it in.
+
+## Boltz Model Usage
+
+The LLM-facing Boltz usage skill is documented in `BOLTZ_MODELS.md`. Use it when
+an agent needs to decide how to call Boltz models, preserve Boltz artifacts, or
+interpret Boltz outputs.

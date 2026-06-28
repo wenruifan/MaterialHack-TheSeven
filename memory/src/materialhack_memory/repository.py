@@ -144,6 +144,9 @@ class MemoryRepository(Protocol):
     def rollback_to_loop(self, *, run_id: str, loop_id: str, actor: str, reason: str) -> LoopRecord:
         ...
 
+    def reject_loop(self, *, run_id: str, loop_id: str, actor: str, reason: str) -> LoopRecord:
+        ...
+
     def record_human_input(self, *, run_id: str, loop_id: str, human_input: HumanInput) -> LoopRecord:
         ...
 
@@ -428,6 +431,8 @@ class InMemoryProteinMemoryRepository:
         target = self.get_loop(run_id=run_id, loop_id=loop_id)
         if target.status == LoopStatus.PENDING:
             raise InvalidLoopOperation("Cannot roll back to a pending loop; finalize or reject it first")
+        if target.status in {LoopStatus.REJECTED, LoopStatus.TERMINAL}:
+            raise InvalidLoopOperation(f"Cannot roll back to a loop with status {target.status.value}")
         old_active_id = run.active_loop_id
 
         if old_active_id != loop_id and self._is_ancestor(run_id, ancestor_id=loop_id, loop_id=old_active_id):
@@ -445,6 +450,31 @@ class InMemoryProteinMemoryRepository:
         self._loops[run_id][loop_id] = target
         self._activate_loop(run_id=run_id, loop_id=loop_id, abandon_previous=False)
         return self.get_loop(run_id=run_id, loop_id=loop_id)
+
+    def reject_loop(self, *, run_id: str, loop_id: str, actor: str, reason: str) -> LoopRecord:
+        run = self.get_run(run_id)
+        loop = self.get_loop(run_id=run_id, loop_id=loop_id)
+        if loop.status == LoopStatus.ACTIVE or loop.loop_id == run.active_loop_id:
+            raise InvalidLoopOperation("Cannot reject the active loop; roll back to another loop instead")
+        if loop.status in {LoopStatus.REJECTED, LoopStatus.TERMINAL}:
+            raise InvalidLoopOperation(f"Cannot reject a loop with status {loop.status.value}")
+
+        rejection_note = HumanInput(
+            author=actor,
+            note=f"Rejected this loop: {reason}",
+            metadata={
+                "action": "reject",
+                "actor": actor,
+                "active_loop_id": run.active_loop_id,
+            },
+        )
+        rejected = replace(
+            loop,
+            status=LoopStatus.REJECTED,
+            human_inputs=loop.human_inputs + (rejection_note,),
+        )
+        self._loops[run_id][loop_id] = rejected
+        return rejected
 
     def record_human_input(self, *, run_id: str, loop_id: str, human_input: HumanInput) -> LoopRecord:
         loop = self.get_loop(run_id=run_id, loop_id=loop_id)
@@ -935,6 +965,11 @@ class TuringDbMemoryRepository(InMemoryProteinMemoryRepository):
     def rollback_to_loop(self, *, run_id: str, loop_id: str, actor: str, reason: str) -> LoopRecord:
         loop = super().rollback_to_loop(run_id=run_id, loop_id=loop_id, actor=actor, reason=reason)
         self._persist_run_and_loops(run_id)
+        return loop
+
+    def reject_loop(self, *, run_id: str, loop_id: str, actor: str, reason: str) -> LoopRecord:
+        loop = super().reject_loop(run_id=run_id, loop_id=loop_id, actor=actor, reason=reason)
+        self._persist_records([("loop_record", self._loop_record_id(run_id, loop_id), loop)])
         return loop
 
     def record_human_input(self, *, run_id: str, loop_id: str, human_input: HumanInput) -> LoopRecord:

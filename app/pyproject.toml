@@ -1,0 +1,24 @@
+[project]
+name = "materialhack-agent"
+version = "0.1.0"
+description = "Application composition layer for the MaterialHack protein-design agent."
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115",
+    "materialhack-loop-runner>=0.1.0",
+    "materialhack-memory>=0.1.0",
+    "numpy>=1.26",
+    "uvicorn[standard]>=0.30",
+]
+
+[project.scripts]
+materialhack-agent = "materialhack_agent.cli:main"
+materialhack-novacore = "materialhack_agent.harness:main"
+materialhack-workbench-api = "materialhack_agent.workbench_api:run"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

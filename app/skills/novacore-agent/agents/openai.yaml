@@ -1,0 +1,4 @@
+interface:
+  display_name: "Novacore Agent"
+  short_description: "Run Novacore protein-design loops from Codex chat."
+  default_prompt: "Run Novacore end to end: confirm CCDC/CSD or de novo seed source, collect parameters and target scores, execute the requested loops, and surface memory, Boltz, TRS, and verifier results."

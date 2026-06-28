@@ -1,0 +1,25 @@
+{
+  "name": "materialhack-novacore",
+  "version": "0.1.0+codex.20260627232059",
+  "description": "Codex-operated protein-design workflow for Novacore memory, guarded loop lifecycle, TRS, Boltz, and verifier loops.",
+  "author": {
+    "name": "MaterialHack TheSeven"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "MaterialHack Novacore",
+    "shortDescription": "Operate protein-design loops from Codex.",
+    "longDescription": "MaterialHack Novacore gives Codex a harnessed protein-design workflow: WF-style seed selection, durable loop memory, guarded one-candidate loop lifecycle, TRS scoring, Boltz setup/preflight, per-user Boltz API key prompting, verifier evidence, reject/rollback, branch provenance, and a memory workbench UI.",
+    "developerName": "MaterialHack TheSeven",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Write",
+      "Interactive"
+    ],
+    "defaultPrompt": [
+      "Run a Novacore preflight.",
+      "Start a protein-design loop.",
+      "Show loop memory evidence."
+    ]
+  }
+}

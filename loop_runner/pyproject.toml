@@ -1,0 +1,16 @@
+[project]
+name = "materialhack-loop-runner"
+version = "0.1.0"
+description = "LangGraph loop runner for agentic protein-design optimization."
+requires-python = ">=3.10"
+dependencies = [
+    "langgraph>=0.2",
+    "materialhack-memory>=0.1.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

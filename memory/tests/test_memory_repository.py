@@ -234,6 +234,51 @@ class MemoryRepositoryTests(unittest.TestCase):
                 reason="Should not activate incomplete memory.",
             )
 
+    def test_reject_loop_records_decision_and_prevents_activation(self) -> None:
+        self.repo.append_loop(
+            run_id="run_test",
+            loop_id="loop_reject",
+            candidate=ProteinCandidate(sequence="ACDEYGHIKLMNPQRSTVWY", origin=CandidateOrigin.DERIVED),
+            change_set=ChangeSet(
+                summary="Candidate to reject",
+                why="Try a candidate before accepting it.",
+                changes=(
+                    ProteinChange(
+                        operation=ChangeOperation.SUBSTITUTE,
+                        machine_diff="F5Y",
+                        rationale="Test aromatic contact.",
+                    ),
+                ),
+            ),
+        )
+
+        rejected = self.repo.reject_loop(
+            run_id="run_test",
+            loop_id="loop_reject",
+            actor="Codex",
+            reason="Boltz confidence regressed.",
+        )
+
+        self.assertEqual(rejected.status, LoopStatus.REJECTED)
+        self.assertEqual(self.repo.get_active_context("run_test").active_loop_id, "loop_0")
+        self.assertEqual(rejected.human_inputs[-1].metadata["action"], "reject")
+        self.assertEqual(rejected.human_inputs[-1].metadata["actor"], "Codex")
+        self.assertIn("Boltz confidence regressed", rejected.human_inputs[-1].note)
+
+        with self.assertRaises(InvalidLoopOperation):
+            self.repo.rollback_to_loop(
+                run_id="run_test",
+                loop_id="loop_reject",
+                actor="human",
+                reason="Rejected candidates cannot become active.",
+            )
+        with self.assertRaises(InvalidLoopOperation):
+            self.repo.attach_evaluation(
+                run_id="run_test",
+                loop_id="loop_reject",
+                evaluation=self._complete_evaluations()[0],
+            )
+
     def test_run_visualization_snapshot_exposes_graph_metrics_and_comments(self) -> None:
         self._append_complete_loop(
             loop_id="loop_1",
