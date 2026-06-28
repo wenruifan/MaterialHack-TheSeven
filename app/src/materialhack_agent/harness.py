@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[3]
 WEB_ROOT = ROOT / "app" / "web"
 WORKBENCH_PORT_SCAN_LIMIT = 50
 JOB_TERMINAL_STATES = {"succeeded", "failed"}
+TOUCHSTONE_UVX_SPEC = "touchstone[mcp] @ git+https://github.com/charleneleong-ai/ai4science.git#subdirectory=touchstone"
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     preflight = subparsers.add_parser("preflight", help="check local harness, TRS, verifier, and Boltz readiness")
     preflight.add_argument("--boltz-command", default="boltz")
+    preflight.add_argument("--touchstone-command", default="touchstone")
     preflight.add_argument("--json", action="store_true")
     preflight.set_defaults(func=preflight_command)
 
@@ -88,7 +90,25 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     run.add_argument("--boltz-command", default="boltz")
     run.add_argument("--enable-external-tools", action="store_true")
-    run.add_argument("--verifier-mcp-server", default=None)
+    run.add_argument(
+        "--no-boltz-api",
+        action="store_true",
+        default=os.environ.get("NOVACORE_PREFER_BOLTZ_API", "").lower() in {"0", "false", "no"},
+        help="do not prefer the hosted Boltz API even when BOLTZ_API_KEY is configured",
+    )
+    run.add_argument("--boltz-api-model", default=os.environ.get("NOVACORE_BOLTZ_API_MODEL", "boltz-2.1"))
+    run.add_argument("--boltz-api-poll-interval-seconds", type=float, default=float(os.environ.get("NOVACORE_BOLTZ_API_POLL_INTERVAL_SECONDS", "5.0")))
+    run.add_argument("--boltz-api-timeout-seconds", type=int, default=int(os.environ.get("NOVACORE_BOLTZ_API_TIMEOUT_SECONDS", os.environ.get("NOVACORE_BOLTZ_TIMEOUT_SECONDS", "3600"))))
+    run.add_argument("--verifier-mcp-server", default=None, help="legacy verifier server label; Touchstone CLI/uvx is used for local verification")
+    run.add_argument("--touchstone-command", default=os.environ.get("NOVACORE_TOUCHSTONE_COMMAND", "touchstone"))
+    run.add_argument(
+        "--no-touchstone-uvx",
+        action="store_true",
+        help="disable uvx fallback for Touchstone when the touchstone CLI is not already installed",
+    )
+    run.add_argument("--touchstone-deep", action="store_true", default=os.environ.get("NOVACORE_TOUCHSTONE_DEEP", "").lower() in {"1", "true", "yes"})
+    run.add_argument("--touchstone-stress", action="store_true", default=os.environ.get("NOVACORE_TOUCHSTONE_STRESS", "").lower() in {"1", "true", "yes"})
+    run.add_argument("--touchstone-timeout-seconds", type=int, default=int(os.environ.get("NOVACORE_TOUCHSTONE_TIMEOUT_SECONDS", "1800")))
     run.add_argument("--boltz-accelerator", choices=("cpu", "gpu", "tpu"), default=os.environ.get("NOVACORE_BOLTZ_ACCELERATOR", "cpu"))
     run.add_argument("--boltz-model", choices=("boltz1", "boltz2"), default=os.environ.get("NOVACORE_BOLTZ_MODEL", "boltz2"))
     run.add_argument("--boltz-cache", default=os.environ.get("BOLTZ_CACHE") or os.environ.get("NOVACORE_BOLTZ_CACHE"))
@@ -127,7 +147,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 
 def preflight_command(args: argparse.Namespace) -> None:
-    checks = _preflight_checks(args.boltz_command)
+    checks = _preflight_checks(args.boltz_command, args.touchstone_command)
     payload = {
         "ok": all(check["ok"] for check in checks if check.get("required", True)),
         "checks": checks,
@@ -210,7 +230,16 @@ def run_direct_command(args: argparse.Namespace) -> None:
         optimization_goals=goals or None,
         boltz_command=args.boltz_command,
         enable_external_tools=args.enable_external_tools,
+        prefer_boltz_api=not args.no_boltz_api,
+        boltz_api_model=args.boltz_api_model,
+        boltz_api_poll_interval_seconds=args.boltz_api_poll_interval_seconds,
+        boltz_api_timeout_seconds=args.boltz_api_timeout_seconds,
         verifier_mcp_server=args.verifier_mcp_server,
+        touchstone_command=args.touchstone_command,
+        touchstone_use_uvx=not args.no_touchstone_uvx,
+        touchstone_deep=args.touchstone_deep,
+        touchstone_stress=args.touchstone_stress,
+        touchstone_timeout_seconds=args.touchstone_timeout_seconds,
         boltz_accelerator=args.boltz_accelerator,
         boltz_model=args.boltz_model,
         boltz_cache=args.boltz_cache,
@@ -356,7 +385,15 @@ def _ensure_api_server(args: argparse.Namespace) -> tuple[int, bool]:
     requires_fresh_api = bool(
         args.chat_agent
         or args.enable_external_tools
+        or args.no_boltz_api
+        or args.boltz_api_model != "boltz-2.1"
+        or args.boltz_api_poll_interval_seconds != 5.0
+        or args.boltz_api_timeout_seconds != 3600
         or args.verifier_mcp_server
+        or args.touchstone_command != "touchstone"
+        or args.no_touchstone_uvx
+        or args.touchstone_deep
+        or args.touchstone_stress
         or args.boltz_command != "boltz"
         or args.boltz_accelerator != "cpu"
         or args.boltz_model != "boltz2"
@@ -374,6 +411,10 @@ def _ensure_api_server(args: argparse.Namespace) -> tuple[int, bool]:
             env["NOVACORE_BOLTZ_COMMAND"] = args.boltz_command
             env["NOVACORE_BOLTZ_ACCELERATOR"] = args.boltz_accelerator
             env["NOVACORE_BOLTZ_MODEL"] = args.boltz_model
+            env["NOVACORE_PREFER_BOLTZ_API"] = "0" if args.no_boltz_api else "1"
+            env["NOVACORE_BOLTZ_API_MODEL"] = args.boltz_api_model
+            env["NOVACORE_BOLTZ_API_POLL_INTERVAL_SECONDS"] = str(args.boltz_api_poll_interval_seconds)
+            env["NOVACORE_BOLTZ_API_TIMEOUT_SECONDS"] = str(args.boltz_api_timeout_seconds)
             env["NOVACORE_BOLTZ_MSA_SERVER_URL"] = args.boltz_msa_server_url
             env["NOVACORE_BOLTZ_MSA_PAIRING_STRATEGY"] = args.boltz_msa_pairing_strategy
             env["NOVACORE_BOLTZ_TIMEOUT_SECONDS"] = str(args.boltz_timeout_seconds)
@@ -392,6 +433,13 @@ def _ensure_api_server(args: argparse.Namespace) -> tuple[int, bool]:
                 env["NOVACORE_ENABLE_EXTERNAL_TOOLS"] = "1"
             if args.verifier_mcp_server:
                 env["NOVACORE_VERIFIER_MCP_SERVER"] = args.verifier_mcp_server
+            env["NOVACORE_TOUCHSTONE_COMMAND"] = args.touchstone_command
+            env["NOVACORE_TOUCHSTONE_USE_UVX"] = "0" if args.no_touchstone_uvx else "1"
+            env["NOVACORE_TOUCHSTONE_TIMEOUT_SECONDS"] = str(args.touchstone_timeout_seconds)
+            if args.touchstone_deep:
+                env["NOVACORE_TOUCHSTONE_DEEP"] = "1"
+            if args.touchstone_stress:
+                env["NOVACORE_TOUCHSTONE_STRESS"] = "1"
             _start_background_process(
                 [
                     sys.executable,
@@ -573,7 +621,7 @@ def _port_available(host: str, port: int) -> bool:
         return sock.connect_ex((host, port)) != 0
 
 
-def _preflight_checks(boltz_command: str) -> list[dict[str, object]]:
+def _preflight_checks(boltz_command: str, touchstone_command: str) -> list[dict[str, object]]:
     checks: list[dict[str, object]] = []
     checks.append({
         "name": "python",
@@ -601,25 +649,41 @@ def _preflight_checks(boltz_command: str) -> list[dict[str, object]]:
         "detail": boltz_path or "not found on PATH or .venv/bin",
         "remediation": "Run `materialhack-novacore setup-boltz --package boltz`.",
     })
-    boltz_api_path = shutil.which("boltz-api") or _venv_binary("boltz-api")
+    checks.append(_import_check("boltz_api", required=False, remediation="Run `materialhack-novacore setup-boltz --package boltz-api` if using hosted Boltz."))
     checks.append({
-        "name": "boltz-api",
-        "ok": boltz_api_path is not None,
+        "name": "BOLTZ_API_KEY",
+        "ok": bool(os.environ.get("BOLTZ_API_KEY")),
         "required": False,
-        "detail": boltz_api_path or "not found on PATH or .venv/bin",
-        "remediation": "Run `materialhack-novacore setup-boltz --package boltz-api` if using hosted Boltz.",
+        "detail": "configured" if os.environ.get("BOLTZ_API_KEY") else "not configured",
+        "remediation": "Set BOLTZ_API_KEY or enter it in the workbench before evaluating loops.",
+    })
+    touchstone_path = shutil.which(touchstone_command) or _venv_binary(touchstone_command)
+    checks.append({
+        "name": touchstone_command,
+        "ok": touchstone_path is not None,
+        "required": False,
+        "detail": touchstone_path or "not found on PATH or .venv/bin",
+        "remediation": f"Use uvx fallback or install Touchstone from {TOUCHSTONE_UVX_SPEC}.",
+    })
+    uvx_path = shutil.which("uvx") or _venv_binary("uvx")
+    checks.append({
+        "name": "touchstone uvx fallback",
+        "ok": uvx_path is not None,
+        "required": False,
+        "detail": uvx_path or "not found on PATH or .venv/bin",
+        "remediation": "Install uv so Novacore can run Touchstone via uvx from the verifier PR.",
     })
     checks.append({
-        "name": "verifier MCP",
-        "ok": bool(__import__("os").environ.get("NOVACORE_VERIFIER_MCP_SERVER")),
+        "name": "touchstone MCP config",
+        "ok": (ROOT / ".mcp.json").exists(),
         "required": False,
-        "detail": __import__("os").environ.get("NOVACORE_VERIFIER_MCP_SERVER") or "not configured",
-        "remediation": "Set NOVACORE_VERIFIER_MCP_SERVER when the verifier server exists.",
+        "detail": str(ROOT / ".mcp.json") if (ROOT / ".mcp.json").exists() else "not configured",
+        "remediation": "Restore .mcp.json from the Touchstone verifier PR.",
     })
     return checks
 
 
-def _import_check(module_name: str, *, required: bool) -> dict[str, object]:
+def _import_check(module_name: str, *, required: bool, remediation: str | None = None) -> dict[str, object]:
     try:
         importlib.import_module(module_name)
     except Exception as exc:
@@ -628,7 +692,7 @@ def _import_check(module_name: str, *, required: bool) -> dict[str, object]:
             "ok": False,
             "required": required,
             "detail": f"{type(exc).__name__}: {exc}",
-            "remediation": "Install local packages with `pip install -e memory -e loop_runner -e app`.",
+            "remediation": remediation or "Install local packages with `pip install -e memory -e loop_runner -e app`.",
         }
     return {
         "name": module_name,

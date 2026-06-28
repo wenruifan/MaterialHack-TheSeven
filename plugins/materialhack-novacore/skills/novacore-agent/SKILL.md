@@ -1,6 +1,6 @@
 ---
 name: novacore-agent
-description: Operate the MaterialHack Novacore protein-design workflow from Codex. Use when the user wants WF-style seed sourcing, durable loop memory, TRS screening, Boltz CLI setup/preflight, verifier output capture, rollback, branching, or the memory workbench UI.
+description: Operate the MaterialHack Novacore protein-design workflow from Codex. Use when the user wants WF-style seed sourcing, durable loop memory, TRS screening, Boltz CLI setup/preflight, Touchstone verifier output capture, rollback, branching, or the memory workbench UI.
 ---
 
 # Novacore Agent
@@ -9,7 +9,7 @@ description: Operate the MaterialHack Novacore protein-design workflow from Code
 
 Codex chat is the Novacore orchestrator and agent-of-record. The repository
 harness is the execution and memory substrate: it creates `loop_0`, runs
-Boltz/TRS/verifier adapters, stores artifacts, validates loop completeness, and
+Boltz/TRS/Touchstone verifier adapters, stores artifacts, validates loop completeness, and
 serves the workbench. It must not privately choose optimization mutations for
 agentic plugin runs.
 
@@ -20,11 +20,11 @@ In normal plugin operation, Codex must use chat-agent mode:
 2. For each requested post-`loop_0` loop, Codex reads the active agent context
    from memory.
 3. Codex reasons in chat from the current sequence, objective, lineage,
-   previous changes, Boltz metrics/artifacts, TRS result, verifier status,
+   previous changes, Boltz metrics/artifacts, TRS result, Touchstone verifier status,
    reflection, human notes, and optional read-only advisor reports.
 4. Codex proposes exactly one bounded candidate change and writes the proposed
    candidate plus rationale into memory.
-5. The harness evaluates that pending loop with Boltz, TRS, and verifier.
+5. The harness evaluates that pending loop with Boltz, TRS, and Touchstone.
 6. Codex reads the returned evidence, writes reflection and next actions, then
    finalizes or asks the user whether to rollback/branch when appropriate.
 7. Codex must not propose another candidate while a chat-operated loop is
@@ -43,7 +43,7 @@ agent must remain the single writer and decision owner.
 Good advisor roles:
 
 - `mutation_planner`: propose candidate edits and tradeoffs.
-- `structure_metric_critic`: interpret Boltz/TRS/verifier evidence.
+- `structure_metric_critic`: interpret Boltz/TRS/Touchstone evidence.
 - `skeptic`: identify failure modes, unsupported assumptions, and rollback
   triggers.
 - `safety_reviewer`: flag unsafe or out-of-scope biological design directions.
@@ -58,7 +58,7 @@ Before starting a run, collect these inputs:
 
 - Seed source: `ccdc_csd`, `de_novo`, or both.
 - Objective and editable parameters: target, pH, required functions, sequence length, and seed count.
-- Desired scores: at minimum `trs_total`; include Boltz confidence and verifier targets when relevant.
+- Desired scores: at minimum `trs_total`; include Boltz confidence and Touchstone verifier targets when relevant.
 - Loop count. Codex should execute exactly this many chat-operated post-`loop_0`
   loops unless the user stops, changes the count, or requests rollback/branching.
 
@@ -98,7 +98,8 @@ Start the live memory workbench in chat-agent mode:
   --workbench \
   --chat-agent \
   --enable-external-tools \
-  --boltz-accelerator cpu
+  --boltz-accelerator cpu \
+  --touchstone-stress
 ```
 
 This creates `loop_0`, preserves the requested loop budget in memory, opens the
@@ -107,11 +108,35 @@ local API printed by the harness.
 
 Use `--json` when Codex needs machine-readable memory evidence.
 Use `--enable-external-tools` for real Boltz evidence. In that mode, Novacore
-writes a Boltz YAML input under `artifacts/<run>/<loop>/boltz/`, runs
-`boltz predict`, captures stdout/stderr/exit code, parses returned confidence
-JSON, and stores mmCIF/confidence/log artifact refs in loop memory. Add
-`--boltz-use-msa-server` only when the user wants online MSA generation;
-otherwise the CLI input uses `msa: empty` single-sequence mode.
+checks `BOLTZ_API_KEY` first. When a key is configured and the `boltz-api`
+Python SDK is installed, it submits the candidate through the hosted Boltz API,
+polls the job, downloads returned mmCIF/archive artifacts, and stores API
+metrics without writing the secret into memory. If no key is configured, it
+falls back to local `boltz predict`: it writes a Boltz YAML input under
+`artifacts/<run>/<loop>/boltz/`, captures stdout/stderr/exit code, parses
+returned confidence JSON, and stores mmCIF/confidence/log artifact refs in loop
+memory. Use `--no-boltz-api` only when the user explicitly wants local Boltz
+even though `BOLTZ_API_KEY` is set. Touchstone verification runs after Boltz
+when a real `.cif`, `.mmcif`, or `.pdb` artifact exists. If `touchstone` is not
+installed, Novacore can use `uvx --from touchstone[mcp] @
+git+https://github.com/charleneleong-ai/ai4science.git#subdirectory=touchstone`.
+Add `--boltz-use-msa-server` only when the user wants online MSA generation;
+otherwise Boltz uses `msa: empty` single-sequence mode.
+
+Boltz API flags:
+
+- `--no-boltz-api`: force local CLI fallback even when `BOLTZ_API_KEY` is configured.
+- `--boltz-api-model boltz-2.1`: hosted model name.
+- `--boltz-api-timeout-seconds 3600`: bound hosted job polling.
+- `--boltz-api-poll-interval-seconds 5.0`: hosted job polling cadence.
+
+Touchstone flags:
+
+- `--touchstone-command touchstone`: override the verifier CLI.
+- `--no-touchstone-uvx`: disable the `uvx` fallback.
+- `--touchstone-deep`: request MLIP relaxation/MD; use only on GPU-capable hosts.
+- `--touchstone-stress`: request neutral/leachate/low-pH robustness mapping.
+- `--touchstone-timeout-seconds 1800`: bound verifier runtime.
 
 ## Chat-Operated Loop API
 
@@ -182,7 +207,10 @@ non-active loop requires an explicit `branch_label` so the workbench can show
 that the candidate continued from an earlier iteration rather than from the
 current head.
 
-3. Run harness evaluations for the pending loop and poll the returned job:
+3. Run harness evaluations for the pending loop and poll the returned job.
+   This executes Boltz, TRS, and Touchstone when external tools and structure
+   artifacts are available; otherwise the verifier tab records a structured
+   pending/needs-input result.
 
 ```bash
 curl -fsS -X POST "$API/api/runs/$RUN_ID/agent-loops/$LOOP_ID/evaluations"
@@ -221,11 +249,15 @@ Then read `/agent-context` again for the next loop. Do not submit another
 candidate until the prior pending loop has been finalized, rejected, or
 otherwise resolved.
 
+Touchstone consensus must be interpreted as `trust`, `weak`, or `defer`.
+Only `trust` should be treated as wet-lab-ready. `weak` and `defer` require
+loop reflection that names the failing verifier tier or missing input.
+
 The workbench exposes a per-user Boltz API key prompt when `BOLTZ_API_KEY` is
 not configured. Keys entered there are stored only in the local FastAPI process
 and returned to the browser only as masked status values. Do not ask users to
-paste API keys into chat. The hosted Boltz evaluator still needs a dedicated
-adapter before Novacore can submit cloud jobs through `boltz-api`.
+paste API keys into chat. A fresh workbench/API process will use the key for
+Boltz API jobs before trying local Boltz.
 
 ## Workbench UI
 
@@ -262,7 +294,7 @@ run parameters or expose loop-control buttons. The memory page exposes:
   set,
 - Boltz artifacts and command/readiness metadata,
 - TRS totals, raw totals, components, weights, and contact assumptions,
-- verifier output or pending verifier status,
+- Touchstone verifier output or pending verifier status,
 - reflection, human notes, rollback/reject markers, lineage, parent loop
   provenance, and branch labels when a candidate continues from an earlier
   loop iteration.
@@ -278,7 +310,7 @@ For each requested loop, Codex chat must:
    results.
 4. Submit the full candidate sequence, `change_set`, and any advisory reports
    through `/agent-loops`.
-5. Ask the harness to run Boltz/TRS/verifier through `/evaluations`.
+5. Ask the harness to run Boltz/TRS/Touchstone through `/evaluations`.
 6. Read the updated memory and compare the new evidence against the objective.
 7. Optionally ask advisor subagents for read-only post-evaluation critique.
 8. Write reflection with what worked, what failed, next actions, and any

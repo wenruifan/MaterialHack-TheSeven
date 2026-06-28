@@ -70,11 +70,13 @@ The automatic loop runner still exists for regression and offline smoke tests.
 Omit `--chat-agent` only when deliberately testing that deterministic internal
 runner.
 
-`--enable-external-tools` makes loop Boltz evaluation live: Novacore writes a
-Boltz YAML input, runs `boltz predict`, stores stdout/stderr/exit code, parses
-returned confidence JSON, and links mmCIF/confidence artifacts into loop
-memory. Add `--boltz-use-msa-server` when the run should call the online MSA
-server instead of using Boltz single-sequence mode.
+`--enable-external-tools` makes loop Boltz evaluation live. Novacore tries the
+hosted Boltz API first when `BOLTZ_API_KEY` is configured and the `boltz-api`
+SDK is installed, then stores returned job metadata, confidence metrics, and
+downloaded structure/archive artifacts. If no key is configured, it falls back
+to local `boltz predict`. Add `--no-boltz-api` only when local Boltz should be
+used despite a configured key. Add `--boltz-use-msa-server` when Boltz should
+use online MSA generation instead of single-sequence mode.
 
 For manual UI debugging, run the memory workbench with two processes:
 
@@ -96,4 +98,5 @@ verifier status, reflection, lineage, and rollback markers.
 
 If `BOLTZ_API_KEY` is not set, the workbench prompts for a Boltz API key. Keys
 entered there are stored only in the local FastAPI process and are returned to
-the browser as masked status values.
+the browser as masked status values. A fresh workbench/API process uses that
+key for Boltz API jobs before trying local Boltz.

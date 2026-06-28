@@ -301,12 +301,12 @@ def generate_seed_candidates(parsed: ParsedObjective, *, config: SeedFlowConfig)
                     ),
                     EvaluationResult(
                         kind=EvaluationKind.VERIFIER,
-                        evaluator_name="verifier-mcp-pending",
+                        evaluator_name="touchstone-pending",
                         evaluator_version=None,
                         metrics=(),
                         passed=None,
-                        summary="Verifier MCP server is not configured yet; no verifier score was produced.",
-                        metadata={"adapter_status": "pending", "agent": "Novacore"},
+                        summary="Touchstone verification needs a generated structure; no seed-stage verifier score was produced.",
+                        metadata={"adapter_status": "needs_structure", "agent": "Novacore", "expected_verifier": "touchstone"},
                     ),
                 ),
                 metadata={

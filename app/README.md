@@ -9,7 +9,7 @@ app is the memory and evidence workbench.
   ranking, and selection.
 - `memory/` durable seed-selection and loop memory, including `loop_0`.
 - `loop_runner/` post-`loop_0` evaluation orchestration with Novacore adapters
-  for Boltz CLI preparation, real TRS scoring, and pending verifier MCP status.
+  for Boltz CLI preparation, real TRS scoring, and Touchstone verifier status.
 
 ## Do We Have Enough?
 
@@ -25,7 +25,7 @@ objective
   -> memory SeedCandidatePool + SeedSelectionDecision
   -> durable loop_0
   -> Codex-authored pending loop proposals
-  -> Boltz artifacts + TRS totals/components/weights + pending verifier record
+  -> Boltz artifacts + TRS totals/components/weights + Touchstone verifier record
   -> Codex-authored reflection and next actions
   -> memory visualization snapshot in the Novacore UI
 ```
@@ -40,12 +40,14 @@ shape:
 - Structure-backed TRS atom-table adapter once Boltz artifacts provide the
   before/after structures needed for exact 3D scoring. The current adapter calls
   the real TRS graph API from sequence-derived contact graphs.
-- Verifier MCP server/high-fidelity oracle. Until that exists, Novacore records
-  a `verifier-mcp-pending` evaluation so the UI can show the missing step.
+- High-fidelity verifier evidence. Novacore now runs Touchstone when external
+  tools and real Boltz structures are available; otherwise it records a
+  structured `touchstone-pending` verifier result.
 - Structure-backed Boltz/TRS coupling. With `--enable-external-tools`,
-  Novacore now runs live `boltz predict` CLI workflows and stores returned
-  artifacts. TRS still uses the current graph adapter until the atom-table
-  structure adapter is wired.
+  Novacore now tries the hosted Boltz API first when `BOLTZ_API_KEY` is
+  configured, then stores returned job metadata, metrics, and artifacts.
+  Without a key, it runs live `boltz predict` CLI workflows. TRS still uses the
+  current graph adapter until the atom-table structure adapter is wired.
 - Durable TuringDB-backed repository configuration for deployed runs.
 
 ## Boltz Protocol
@@ -84,12 +86,15 @@ PYTHON=/opt/homebrew/bin/python3.11 ./scripts/novacore setup-boltz --package bol
 ```
 
 The run command works offline. Boltz output remains dry-run evidence unless
-`--enable-external-tools` is set and a usable Boltz command is installed.
-When external tools are enabled, Novacore writes Boltz YAML inputs under
-`artifacts/<run>/<loop>/boltz/`, runs `boltz predict`, captures process logs,
-parses confidence metrics, and links mmCIF/confidence artifacts into loop
-memory. Add `--boltz-use-msa-server` to call the online MSA server; otherwise
-the harness uses `msa: empty` single-sequence mode.
+`--enable-external-tools` is set. When external tools are enabled, Novacore
+tries the Boltz API first if `BOLTZ_API_KEY` is configured and the `boltz-api`
+SDK is installed. It polls the hosted job, downloads returned artifacts, and
+stores metrics without exposing the secret. Without a key, it writes Boltz YAML
+inputs under `artifacts/<run>/<loop>/boltz/`, runs `boltz predict`, captures
+process logs, parses confidence metrics, and links mmCIF/confidence artifacts
+into loop memory. Add `--no-boltz-api` to force local Boltz despite a
+configured key. Add `--boltz-use-msa-server` to call online MSA generation;
+otherwise Boltz uses `msa: empty` single-sequence mode.
 With `--workbench --chat-agent`, the harness starts a fresh local Novacore API,
 starts the memory-only React workbench on an available local port, opens the
 browser to `/memory/:runId`, creates `loop_0`, and returns. Codex chat then

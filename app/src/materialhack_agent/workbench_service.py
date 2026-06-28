@@ -28,7 +28,7 @@ from materialhack_agent.novacore import (
     NovacoreBoltzCliEvaluator,
     NovacoreToolConfig,
     NovacoreTrsScreeningPipeline,
-    PendingVerifierMcpAdapter,
+    TouchstoneVerifierAdapter,
     build_novacore_runner,
 )
 from materialhack_agent.observable_memory import ObservableInMemoryProteinMemoryRepository
@@ -496,7 +496,7 @@ class WorkbenchService:
                 loop_id=loop.loop_id,
                 evaluation=screening_evaluation,
             )
-            verifier_evaluation = PendingVerifierMcpAdapter(config=tool_config).evaluate(
+            verifier_evaluation = TouchstoneVerifierAdapter(config=tool_config).evaluate(
                 context,
                 loop,
                 boltz_evaluation,
@@ -588,7 +588,20 @@ class WorkbenchService:
             boltz_command=os.environ.get("NOVACORE_BOLTZ_COMMAND", "boltz"),
             enable_external_tools=os.environ.get("NOVACORE_ENABLE_EXTERNAL_TOOLS", "").lower()
             in {"1", "true", "yes"},
+            prefer_boltz_api=os.environ.get("NOVACORE_PREFER_BOLTZ_API", "1").lower()
+            in {"1", "true", "yes"},
+            boltz_api_model=os.environ.get("NOVACORE_BOLTZ_API_MODEL", "boltz-2.1"),
+            boltz_api_poll_interval_seconds=_env_float("NOVACORE_BOLTZ_API_POLL_INTERVAL_SECONDS", 5.0),
+            boltz_api_timeout_seconds=_env_int("NOVACORE_BOLTZ_API_TIMEOUT_SECONDS", 3600),
             verifier_mcp_server=os.environ.get("NOVACORE_VERIFIER_MCP_SERVER"),
+            touchstone_command=os.environ.get("NOVACORE_TOUCHSTONE_COMMAND", "touchstone"),
+            touchstone_use_uvx=os.environ.get("NOVACORE_TOUCHSTONE_USE_UVX", "1").lower()
+            in {"1", "true", "yes"},
+            touchstone_deep=os.environ.get("NOVACORE_TOUCHSTONE_DEEP", "").lower()
+            in {"1", "true", "yes"},
+            touchstone_stress=os.environ.get("NOVACORE_TOUCHSTONE_STRESS", "").lower()
+            in {"1", "true", "yes"},
+            touchstone_timeout_seconds=_env_int("NOVACORE_TOUCHSTONE_TIMEOUT_SECONDS", 1800),
             boltz_accelerator=os.environ.get("NOVACORE_BOLTZ_ACCELERATOR", "cpu"),
             boltz_model=os.environ.get("NOVACORE_BOLTZ_MODEL", "boltz2"),
             boltz_cache=os.environ.get("NOVACORE_BOLTZ_CACHE") or os.environ.get("BOLTZ_CACHE"),
@@ -606,6 +619,11 @@ class WorkbenchService:
 def _env_int(name: str, default: int) -> int:
     value = os.environ.get(name)
     return int(value) if value else default
+
+
+def _env_float(name: str, default: float) -> float:
+    value = os.environ.get(name)
+    return float(value) if value else default
 
 
 def _env_optional_int(name: str) -> int | None:

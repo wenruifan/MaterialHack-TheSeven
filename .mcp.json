@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "touchstone": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "touchstone[mcp] @ git+https://github.com/charleneleong-ai/ai4science.git#subdirectory=touchstone",
+        "touchstone-mcp"
+      ]
+    }
+  }
+}
